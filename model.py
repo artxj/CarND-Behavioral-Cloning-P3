@@ -102,12 +102,18 @@ def plot_history(history_object):
     plt.legend(['training set', 'validation set'], loc='upper right')
     plt.show()
 
-log_paths = [ './data/data1_1/driving_log.csv', './data/data1_2/driving_log.csv', './data/data1_3/driving_log.csv',\
-    './data/data2_1/driving_log.csv', './data/data2_2/driving_log.csv' ]
+
+log_paths = [ './data/data1_1/driving_log.csv',\
+    './data/data1_2/driving_log.csv', './data/data1_3/driving_log.csv',\
+    './data/data1_4/driving_log.csv', './data/data1_5/driving_log.csv',\
+    './data/data1_6/driving_log.csv',\
+    './data/data2_1/driving_log.csv', './data/data2_2/driving_log.csv',\
+    './data/data2_3/driving_log.csv', './data/data2_4/driving_log.csv',
+    './data/data2_5/driving_log.csv' ]
 model_path = './model/model.h5'
 nb_epoch = 15
 image_shape = (160, 320, 3)
-batch_size = 128
+batch_size = 64
 angle_shift = 0.15
 
 print('Loading samples...')
