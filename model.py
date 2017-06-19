@@ -2,6 +2,7 @@
 import csv
 import cv2
 from keras import regularizers
+#from keras.callbacks import EarlyStopping
 from keras.models import Sequential, Model
 from keras.layers import Activation, Conv2D, Cropping2D, Dense, Dropout, Flatten, Lambda
 import matplotlib.pyplot as plt
@@ -102,19 +103,32 @@ def plot_history(history_object):
     plt.legend(['training set', 'validation set'], loc='upper right')
     plt.show()
 
+def show_histogram(samples, shift=0.2):
+    """
+    Displays histogram on the data provided
+    """
+    y_data = np.array([])
+    for sample in samples:
+        angle = float(sample[3])
+        y_data = np.append(y_data, angle)
+        y_data = np.append(y_data, angle+shift)
+        y_data = np.append(y_data, angle-shift)
+
+    plt.hist(y_data, bins=np.unique(y_data))
+    plt.show()
 
 log_paths = [ './data/data1_1/driving_log.csv',\
     './data/data1_2/driving_log.csv', './data/data1_3/driving_log.csv',\
     './data/data1_4/driving_log.csv', './data/data1_5/driving_log.csv',\
-    './data/data1_6/driving_log.csv',\
+    './data/data1_6/driving_log.csv', './data/data1_7/driving_log.csv',\
     './data/data2_1/driving_log.csv', './data/data2_2/driving_log.csv',\
     './data/data2_3/driving_log.csv', './data/data2_4/driving_log.csv',
     './data/data2_5/driving_log.csv' ]
 model_path = './model/model.h5'
-nb_epoch = 15
+nb_epoch = 30
 image_shape = (160, 320, 3)
 batch_size = 64
-angle_shift = 0.15
+angle_shift = 0.22
 
 print('Loading samples...')
 
@@ -122,9 +136,11 @@ samples = []
 for path in log_paths:
     samples = samples + read_data(path)
 
-train_samples, validation_samples = train_test_split(samples, test_size=0.33)
+train_samples, validation_samples = train_test_split(samples, test_size=0.25)
 nb_train_samples = len(train_samples)
 nb_validation_samples = len(validation_samples)
+
+# show_histogram(train_samples, angle_shift)
 
 print('loaded!')
 print('Train samples count = {}'.format(nb_train_samples))
@@ -137,6 +153,7 @@ model = build_model(cropping=((60, 25), (0, 0)), input_shape=image_shape)
 model.compile(loss='mse', optimizer='adam')
 history = model.fit_generator(train_generator, steps_per_epoch=nb_train_samples // batch_size,\
     validation_data=validation_generator, validation_steps=nb_validation_samples // batch_size,\
+    #callbacks=EarlyStopping(monitor='val_loss', min_delta=.0, patience=2),\
     epochs=nb_epoch)
 
 # plot_history(history)
