@@ -5,3 +5,6 @@ model.h5
 run1
 down.py
 mouse_data
+data_lap
+data_turns
+kb_data

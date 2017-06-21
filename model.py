@@ -1,6 +1,8 @@
 
+import argparse
 import csv
 import cv2
+import keras
 from keras import regularizers
 from keras.callbacks import EarlyStopping
 from keras.models import Sequential, Model
@@ -110,14 +112,11 @@ def build_model(cropping, input_shape):
     model.add(Flatten())
     #model.add(Dense(100, kernel_regularizer=regularizers.l2(l2_beta)))
     model.add(Dense(100))
-    #model.add(Activation('relu'))
     model.add(Dropout(0.5))
     model.add(Dense(50))
     model.add(Dropout(0.5))
-    #model.add(Activation('relu'))
     model.add(Dense(10))
     model.add(Dropout(0.5))
-    #model.add(Activation('relu'))
     model.add(Dense(1))
     return model
 
@@ -144,28 +143,32 @@ def show_histogram(samples, shift=0.2):
     plt.hist(y_data, bins=np.unique(y_data))
     plt.show()
 
-if __name__ == '__main__':
-    '''
-    path = './data/data1_1/IMG/center_2017_06_11_18_32_25_404.jpg'
-    image = cv2.imread(path)
-    image = apply_shadows(image)
-    plt.imshow(image)
-    plt.show()
-    '''
+def main():
+    parser = argparse.ArgumentParser(description='Train model.')
+    parser.add_argument(
+        '--model_path',
+        type=str,
+        default='./model/model.h5',
+        help='Path to a model to be loaded (optionally) and to be saved.'
+    )
+    parser.add_argument(
+        '--load',
+        type=bool,
+        default=False,
+        help='Load model from model_path')
+    args = parser.parse_args()
 
-    log_paths = [ './data/data1_1/driving_log.csv',\
-        './data/data1_2/driving_log.csv', './data/data1_3/driving_log.csv',
-        './data/data1_4/driving_log.csv', './data/data1_5/driving_log.csv',
-        './data/data1_6/driving_log.csv', './data/data1_7/driving_log.csv',
-        './data/data2_1/driving_log.csv', './data/data2_2/driving_log.csv',
-        './data/data2_3/driving_log.csv', './data/data2_4/driving_log.csv',
-        './data/data2_5/driving_log.csv', './data/data2_6/driving_log.csv',
-        './data/data2_7/driving_log.csv', './data/data2_8/driving_log.csv' ]
-    model_path = './model/model.h5'
-    nb_epoch = 30
+    log_paths = [ './kb_data/data1_1/driving_log.csv', './kb_data/data1_2/driving_log.csv',
+         './kb_data/data1_3/driving_log.csv', './kb_data/data1_4/driving_log.csv',
+         './kb_data/data1_5/driving_log.csv', './kb_data/data1_5/driving_log.csv', # bridge
+         './kb_data/data1_6/driving_log.csv',
+         './kb_data/data1_7/driving_log.csv' ]
+
+    model_path = args.model_path
+    nb_epoch = 5
     image_shape = (160, 320, 3)
-    batch_size = 64
-    angle_shift = 0.22
+    batch_size = 32
+    angle_shift = 0.1
 
     print('Loading samples...')
 
@@ -173,7 +176,7 @@ if __name__ == '__main__':
     for path in log_paths:
         samples = samples + read_data(path)
 
-    train_samples, validation_samples = train_test_split(samples, test_size=0.25)
+    train_samples, validation_samples = train_test_split(samples, test_size=0.33)
     nb_train_samples = len(train_samples)
     nb_validation_samples = len(validation_samples)
 
@@ -186,13 +189,21 @@ if __name__ == '__main__':
     train_generator = samples_generator(train_samples, batch_size=batch_size, shift=angle_shift)
     validation_generator = samples_generator(validation_samples, batch_size=batch_size, shift=angle_shift)
 
+    #if args.load_model:
+    #model = keras.models.load_model(model_path)
+    #else:
     model = build_model(cropping=((60, 25), (0, 0)), input_shape=image_shape)
+
     model.compile(loss='mse', optimizer='adam')
     history = model.fit_generator(train_generator, steps_per_epoch=nb_train_samples // batch_size,\
         validation_data=validation_generator, validation_steps=nb_validation_samples // batch_size,\
-        callbacks=[EarlyStopping(monitor='val_loss', min_delta=.0, patience=3)],\
+        callbacks=[EarlyStopping(monitor='val_loss', min_delta=.0, patience=1)],\
         epochs=nb_epoch)
 
     # plot_history(history)
 
     model.save(model_path)
+
+
+if __name__ == '__main__':
+    main()
