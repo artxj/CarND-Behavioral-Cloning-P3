@@ -190,9 +190,9 @@ def main():
     validation_generator = samples_generator(validation_samples, batch_size=batch_size, shift=angle_shift)
 
     #if args.load_model:
-    #model = keras.models.load_model(model_path)
+    model = keras.models.load_model(model_path)
     #else:
-    model = build_model(cropping=((60, 25), (0, 0)), input_shape=image_shape)
+    #model = build_model(cropping=((60, 25), (0, 0)), input_shape=image_shape)
 
     model.compile(loss='mse', optimizer='adam')
     history = model.fit_generator(train_generator, steps_per_epoch=nb_train_samples // batch_size,\
