@@ -47,7 +47,7 @@ class SimplePIController:
 
 
 controller = SimplePIController(0.1, 0.002)
-set_speed = 12
+set_speed = 12 # changing the speed to prevent 'stopped vehicle' glitch on track 2
 controller.set_desired(set_speed)
 
 
@@ -64,6 +64,9 @@ def telemetry(sid, data):
         imgString = data["image"]
         image = Image.open(BytesIO(base64.b64decode(imgString)))
         image_array = np.asarray(image)
+
+        ### Notice: I had to preprocess the image here because of
+        ### the model is being trained on BGR images with CLAHE applied
         image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
         image_array = clahe_image(image_array)
         #image_array = np.asarray(image)

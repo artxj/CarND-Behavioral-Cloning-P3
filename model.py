@@ -159,12 +159,12 @@ def test_clahe():
     '''
     img = cv2.imread('./mouse_data/data2_1/IMG/center_2017_06_19_18_46_53_190.jpg')
 
-    lab= cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
     cl = clahe.apply(l)
     limg = cv2.merge((cl,a,b))
-    final = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
+    final = cv2.cvtColor(limg, cv2.COLOR_LAB2RGB)
     plt.imshow(final)
     plt.show()
 
