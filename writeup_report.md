@@ -42,8 +42,8 @@ The project includes the following files:
 * [writeup_report.md](./writeup_report.md) summarizing the results;
 
 Videos of the neural network successfully driving a car on both tracks are:
-* [first track (lake)](./videos/track1.mp4);
-* [second track (jungle)](./videos/track2.mp4).
+* [first track (lake)](./tracks/track1.mp4);
+* [second track (jungle)](./tracks/track2.mp4).
 
 **2. Submission includes functional code**
 Using the Udacity provided simulator and project's drive.py file, the car can be driven autonomously around the track by executing

@@ -7,8 +7,8 @@ Overview
 This repository contains files for the Behavioral Cloning Project. The neural network is built and is trained to successfully run on both provided tracks. For the details, check [the writeup report](./writeup_report.md).
 
 **Videos** of the neural network successfully driving a car on both tracks are:
-* [first track (lake)](./videos/track1.mp4);
-* [second track (jungle)](./videos/track2.mp4).
+* [first track (lake)](./tracks/track1.mp4);
+* [second track (jungle)](./tracks/track2.mp4).
 
 **Script and model files**:
 * [model.py](./model.py) containing the script to create and train the model;
