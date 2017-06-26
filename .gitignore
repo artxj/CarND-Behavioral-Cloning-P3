@@ -8,3 +8,6 @@ data_lap
 data_turns
 kb_data
 model
+tracks/images
+old_data
+__pycache__

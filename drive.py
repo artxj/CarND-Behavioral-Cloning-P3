@@ -16,6 +16,9 @@ from keras.models import load_model
 import h5py
 from keras import __version__ as keras_version
 
+import cv2
+from preprocess import clahe_image
+
 sio = socketio.Server()
 app = Flask(__name__)
 model = None
@@ -44,7 +47,7 @@ class SimplePIController:
 
 
 controller = SimplePIController(0.1, 0.002)
-set_speed = 9
+set_speed = 12
 controller.set_desired(set_speed)
 
 
@@ -61,13 +64,13 @@ def telemetry(sid, data):
         imgString = data["image"]
         image = Image.open(BytesIO(base64.b64decode(imgString)))
         image_array = np.asarray(image)
+        image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+        image_array = clahe_image(image_array)
+        #image_array = np.asarray(image)
         predict = model.predict(image_array[None, :, :, :], batch_size=1)
-        #print('predict is {:.3f} and {:.3f}'.format(predict[0][0], predict[0][1]))
-        #steering_angle = float(predict[0][0])
         steering_angle = float(predict)
 
         throttle = controller.update(float(speed))
-        # throttle = -controller.update(float(predict[0][1]))
 
         print(steering_angle, throttle)
         send_control(steering_angle, throttle)

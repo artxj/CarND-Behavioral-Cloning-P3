@@ -11,11 +11,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import random
+from scipy.misc import imresize
 import sklearn
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
 
+from preprocess import clahe_image
+
 def read_data(file_path):
+    """
+    Reads driving log and returns its lines as array
+    """
     samples = []
     with open(file_path) as csv_file:
         reader = csv.reader(csv_file)
@@ -24,30 +30,36 @@ def read_data(file_path):
     return samples
 
 def flip_image(image, angle):
+    """
+    Flips image horizontally. Returns (-angle) as second parameter
+    """
     return np.fliplr(image), -angle
 
-def apply_shadows(image, alpha=0.85):
-    overlay = image.copy()
-    output = image.copy()
-    img_height = image.shape[0]
-    img_width = image.shape[1]
-    top_point = random.random()
-    bottom_point = random.random()
-    pts = np.array( [[[0, 0], [int(top_point * img_width), 0], [int(bottom_point * img_width), img_height], [0, img_height]]], dtype=np.int32)
-    cv2.fillPoly(overlay, pts, (0, 0, 0))
-    cv2.addWeighted(overlay, alpha, output, 1 - alpha, 0, output)
-    return output
-
 def read_image_data(file_path, angle, shift=0.0):
+    """
+    Reads an image. Returns (angle+shift) as second parameter
+    """
     image = cv2.imread(file_path)
+    if image is None:
+        return None, 0
+    image = clahe_image(image)
     return image, (angle + shift)
 
 def convert_path(path):
+    """
+    Converts an absolute image path to relative one
+    """
     path_components = path.split('/')[-4:]
     return './' + '/'.join(path_components)
 
-def samples_generator(samples, batch_size=32, shift=0.2):
+def samples_generator_v2(samples, batch_size=32, shift=0.2, flip=False):
+    """
+    Generator to produce batches of samples images.
+    Produces 3 x batch_size images if flip=False (center, left, right)
+    Produces 6 x batch_size images if flip=True (center, left, right, all flipped ones)
+    """
     num_samples = len(samples)
+
     while True:
         shuffle(samples)
         for offset in range(0, num_samples, batch_size):
@@ -55,43 +67,24 @@ def samples_generator(samples, batch_size=32, shift=0.2):
 
             images = []
             angles = []
-            # speeds = []
+
             for batch_sample in batch_samples:
-                new_images = []
-                new_angles = []
-                center_image, center_angle = read_image_data(convert_path(batch_sample[0]), float(batch_sample[3]))
-                left_image, left_angle = read_image_data(convert_path(batch_sample[1]), center_angle, shift)
-                right_image, right_angle = read_image_data(convert_path(batch_sample[2]), center_angle, -shift)
-
-                if center_image is None or left_image is None or right_image is None:
-                    continue
-
-                # speed = float(batch_sample[6])
-                new_images = [center_image, left_image, right_image]
-                new_angles = [center_angle, left_angle, right_angle]
-                #images = images + [center_image, left_image, right_image]
-                #angles = angles + [center_angle, left_angle, right_angle]
-
-                flipped_center_image, flipped_center_angle = flip_image(center_image, center_angle)
-                flipped_left_image, flipped_left_angle = flip_image(left_image, left_angle)
-                flipped_right_image, flipped_right_angle = flip_image(right_image, right_angle)
-
-                new_images = new_images + [flipped_center_image, flipped_left_image, flipped_right_image]
-                new_angles = new_angles + [flipped_center_angle, flipped_left_angle, flipped_right_angle]
-                #images = images + [flipped_center_image, flipped_left_image, flipped_right_image]
-                #angles = angles + [flipped_center_angle, flipped_left_angle, flipped_right_angle]
-
-                shadowed_images = []
-                shadowed_angles = []
-                for count in range(0, len(new_images)):
-                    new_image = new_images[count]
-                    new_angle = new_angles[count]
-                    shadowed_image = apply_shadows(new_image)
-                    shadowed_images.append(shadowed_image)
-                    shadowed_angles.append(new_angle)
-
-                images = images + new_images + shadowed_images
-                angles = angles + new_angles + shadowed_angles
+                center_angle = float(batch_sample[3])
+                for image_num in range(0, 3):
+                    apply_shift = 0.0
+                    if image_num == 1:
+                        apply_shift = shift
+                    elif image_num == 2:
+                        apply_shift = -shift
+                    orig_image, orig_angle = read_image_data(convert_path(batch_sample[image_num]), center_angle, apply_shift)
+                    if orig_image is None:
+                        continue
+                    images.append(orig_image)
+                    angles.append(orig_angle)
+                    if flip:
+                        flipped_image, flipped_angle = flip_image(orig_image, orig_angle)
+                        images.append(flipped_image)
+                        angles.append(flipped_angle)
 
             X_train = np.array(images)
             y_train = np.array(angles)
@@ -99,28 +92,45 @@ def samples_generator(samples, batch_size=32, shift=0.2):
             yield shuffle(X_train, y_train)
 
 def build_model(cropping, input_shape):
+    """
+    Builds Keras model.
+    NVIDIA model https://arxiv.org/abs/1604.07316 with small changes:
+    the 5th conv layer has same padding due to lower image size;
+    two dropout layers are added after FCs.
+    """
     model = Sequential()
+
     model.add(Cropping2D(cropping=cropping, input_shape=(160, 320, 3)))
     new_shape = (input_shape[0] - cropping[0][0] - cropping[0][1], input_shape[1] - cropping[1][0] - cropping[1][1], input_shape[2])
-    print('New shape is ' + str(new_shape))
-    model.add(Lambda(lambda x: (x / 255.0) - 0.5, input_shape=new_shape))
+
+    def resize_normalize_image(image):
+        """
+        Resizing the input image to (47, 200)
+        and normalizing it.
+        """
+        import tensorflow as tf
+        image = tf.image.resize_images(image, (47, 200))
+        return (image / 255.0) - 0.5
+
+    model.add(Lambda(resize_normalize_image, input_shape=new_shape, output_shape=(47, 200, 3)))
     model.add(Conv2D(24, (5, 5), strides=(2, 2), activation='relu'))
     model.add(Conv2D(36, (5, 5), strides=(2, 2), activation='relu'))
     model.add(Conv2D(48, (5, 5), strides=(2, 2), activation='relu'))
     model.add(Conv2D(64, (3, 3), activation='relu'))
-    model.add(Conv2D(64, (3, 3), activation='relu'))
+    model.add(Conv2D(64, (3, 3), activation='relu', padding='same'))
     model.add(Flatten())
-    #model.add(Dense(100, kernel_regularizer=regularizers.l2(l2_beta)))
     model.add(Dense(100))
     model.add(Dropout(0.5))
     model.add(Dense(50))
     model.add(Dropout(0.5))
     model.add(Dense(10))
-    model.add(Dropout(0.5))
     model.add(Dense(1))
     return model
 
 def plot_history(history_object):
+    """
+    Displays the history plot of MSE loss over epochs
+    """
     plt.plot(history_object.history['loss'])
     plt.plot(history_object.history['val_loss'])
     plt.title('model mean squared error loss')
@@ -131,7 +141,7 @@ def plot_history(history_object):
 
 def show_histogram(samples, shift=0.2):
     """
-    Displays histogram on the data provided
+    Displays histogram on the distribution of the data provided
     """
     y_data = np.array([])
     for sample in samples:
@@ -140,35 +150,88 @@ def show_histogram(samples, shift=0.2):
         y_data = np.append(y_data, angle+shift)
         y_data = np.append(y_data, angle-shift)
 
-    plt.hist(y_data, bins=np.unique(y_data))
+    plt.hist(y_data, bins=51)
     plt.show()
 
-def main():
-    parser = argparse.ArgumentParser(description='Train model.')
+def test_clahe():
+    '''
+    Displaying the test image after applying CLAHE.
+    '''
+    img = cv2.imread('./mouse_data/data2_1/IMG/center_2017_06_19_18_46_53_190.jpg')
+
+    lab= cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+    cl = clahe.apply(l)
+    limg = cv2.merge((cl,a,b))
+    final = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
+    plt.imshow(final)
+    plt.show()
+
+def parse_args():
+    '''
+    Parses console arguments.
+    '''
+    parser = argparse.ArgumentParser(description='Car steering angle prediction model.')
     parser.add_argument(
         '--model_path',
         type=str,
         default='./model/model.h5',
-        help='Path to a model to be loaded (optionally) and to be saved.'
+        help='Path to a model to be loaded (optionally) and to be saved'
     )
     parser.add_argument(
         '--load',
-        type=bool,
-        default=False,
-        help='Load model from model_path')
-    args = parser.parse_args()
+        action='store_true',
+        help='Load model from model_path.'
+    )
+    parser.add_argument(
+        '--hist',
+        action='store_true',
+        help='Display a histogram of input data.'
+    )
+    parser.add_argument(
+        '--plot',
+        action='store_true',
+        help='Displays a plot history of val_loss.'
+    )
+    parser.add_argument(
+        '--test_clahe',
+        action='store_true',
+        help='Displays a sample of applying CLAHE for image.'
+    )
+    parser.add_argument(
+        '--epochs',
+        type=int,
+        default=15,
+        help='Number of epochs to be run.'
+    )
+    return parser.parse_args()
 
-    log_paths = [ './kb_data/data1_1/driving_log.csv', './kb_data/data1_2/driving_log.csv',
-         './kb_data/data1_3/driving_log.csv', './kb_data/data1_4/driving_log.csv',
-         './kb_data/data1_5/driving_log.csv', './kb_data/data1_5/driving_log.csv', # bridge
-         './kb_data/data1_6/driving_log.csv',
-         './kb_data/data1_7/driving_log.csv' ]
+def main():
+    """
+    Creates/Loads the model and runs training over it.
+    """
+
+    args = parse_args()
+
+    if args.test_clahe:
+        test_clahe()
+        return
+
+    log_paths = [ './mouse_data/data1_1/driving_log.csv',
+        './mouse_data/data1_2/driving_log.csv',
+        './mouse_data/data1_3/driving_log.csv',
+        './mouse_data/data1_4/driving_log.csv',
+        './mouse_data/data2_1/driving_log.csv',
+        './mouse_data/data2_2/driving_log.csv',
+        './mouse_data/data2_3/driving_log.csv',
+        './mouse_data/data2_4/driving_log.csv' ]
 
     model_path = args.model_path
-    nb_epoch = 5
+    nb_epoch = args.epochs
     image_shape = (160, 320, 3)
-    batch_size = 32
-    angle_shift = 0.1
+    batch_size = 128
+    angle_shift = 0.15
 
     print('Loading samples...')
 
@@ -176,33 +239,38 @@ def main():
     for path in log_paths:
         samples = samples + read_data(path)
 
-    train_samples, validation_samples = train_test_split(samples, test_size=0.33)
+    train_samples, validation_samples = train_test_split(samples, test_size=0.25)
     nb_train_samples = len(train_samples)
     nb_validation_samples = len(validation_samples)
 
-    # show_histogram(train_samples, angle_shift)
+    if args.hist:
+        show_histogram(train_samples, angle_shift)
+        return
 
-    print('loaded!')
+    print('...loaded!')
     print('Train samples count = {}'.format(nb_train_samples))
     print('Validation samples count = {}'.format(nb_validation_samples))
 
-    train_generator = samples_generator(train_samples, batch_size=batch_size, shift=angle_shift)
-    validation_generator = samples_generator(validation_samples, batch_size=batch_size, shift=angle_shift)
+    train_generator = samples_generator_v2(train_samples, batch_size=batch_size,
+        shift=angle_shift, flip=True)
+    validation_generator = samples_generator_v2(validation_samples, batch_size=batch_size,
+        shift=angle_shift, flip=True)
 
-    #if args.load_model:
-    model = keras.models.load_model(model_path)
-    #else:
-    #model = build_model(cropping=((60, 25), (0, 0)), input_shape=image_shape)
+    if args.load:
+        model = keras.models.load_model(model_path)
+    else:
+        model = build_model(cropping=((60, 25), (0, 0)), input_shape=image_shape)
 
     model.compile(loss='mse', optimizer='adam')
-    history = model.fit_generator(train_generator, steps_per_epoch=nb_train_samples // batch_size,\
-        validation_data=validation_generator, validation_steps=nb_validation_samples // batch_size,\
-        callbacks=[EarlyStopping(monitor='val_loss', min_delta=.0, patience=1)],\
+    history = model.fit_generator(train_generator, steps_per_epoch=nb_train_samples // batch_size,
+        validation_data=validation_generator, validation_steps=nb_validation_samples // batch_size,
+        callbacks=[EarlyStopping(monitor='val_loss', min_delta=.0, patience=1)],
         epochs=nb_epoch)
 
-    # plot_history(history)
-
     model.save(model_path)
+
+    if args.plot:
+        plot_history(history)
 
 
 if __name__ == '__main__':
