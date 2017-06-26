@@ -94,7 +94,7 @@ Also, the first approach resulted in fast model overfitting so two dropout layer
 
 At the end of the process, the vehicle is able to drive autonomously around the tracks without leaving the road.
 
-####2. Final Model Architecture
+**2. Final Model Architecture**
 
 The final model architecture (model.py lines 94-128) consists of a convolution neural network with the following layers and layer sizes:
 * Conv2D (24 5x5 filters, 2x2 strides, valid padding, ReLU activation)
